@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>CRASHLESS | Riyadh Interactive Platform</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root { --cyan: #00f2fe; --red: #ff0055; --bg: #020617; --glass: rgba(15, 23, 42, 0.9); }
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* الشريط الجانبي */
+        nav { width: 80px; background: rgba(0,0,0,0.5); border-left: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; padding: 30px 0; gap: 25px; z-index: 1001; }
+        nav i { font-size: 1.5rem; color: #475569; cursor: pointer; transition: 0.3s; padding: 12px; border-radius: 15px; }
+        nav i.active { color: var(--cyan); background: rgba(0, 242, 254, 0.1); box-shadow: 0 0 15px var(--cyan); }
+
+        /* المحتوى الرئيسي */
+        .main-content { flex: 1; display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; padding: 20px; }
+        .panel { background: var(--glass); border-radius: 25px; border: 1px solid rgba(255,255,255,0.1); padding: 25px; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+        /* الصفحات */
+        .page { display: none; height: 100%; flex-direction: column; }
+        .page.active { display: flex; }
+
+        /* الخريطة */
+        #map-container { flex: 1; border-radius: 20px; overflow: hidden; border: 1px solid #1e293b; }
+
+        /* السيارة والسرعة */
+        .car-hud { flex: 1; display: flex; justify-content: center; align-items: center; position: relative; }
+        .tire { position: absolute; width: 35px; height: 65px; background: #1e293b; border-radius: 6px; border: 2px solid var(--cyan); transition: 0.3s; }
+        .tire-danger { background: var(--red) !important; box-shadow: 0 0 25px var(--red); animation: blink 0.5s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+
+        .speed-val { font-size: 5rem; font-weight: 900; color: var(--cyan); text-align: center; line-height: 1; text-shadow: 0 0 30px rgba(0,242,254,0.3); }
+        .btn-emergency { background: linear-gradient(90deg, var(--red), #8b0000); color: white; border: none; padding: 18px; border-radius: 15px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <i class="fas fa-microchip active" onclick="switchPage('telemetry', this)" title="التشخيص"></i>
+        <i class="fas fa-map-marked-alt" onclick="switchPage('map-page', this)" title="خريطة الرياض"></i>
+        <i class="fas fa-shield-alt" onclick="switchPage('safety', this)" title="سجل الأمان"></i>
+        <i class="fas fa-cog" onclick="switchPage('settings', this)" title="الإعدادات"></i>
+    </nav>
+
+    <div class="main-content">
+        <section class="panel">
+            <div id="telemetry" class="page active">
+                <h3>التشخيص الهيكلي (Digital Twin)</h3>
+                <div class="car-hud">
+                    <img src="https://cdn-icons-png.flaticon.com/512/1048/1048313.png" style="width:130px; filter: invert(1);">
+                    <div id="tire-fr" class="tire" style="top:20%; left:32%;"></div>
+                    <div id="tire-fl" class="tire" style="top:20%; right:32%;"></div>
+                    <div id="tire-rr" class="tire" style="bottom:20%; left:32%;"></div>
+                    <div id="tire-rl" class="tire" style="bottom:20%; right:32%;"></div>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                    <div class="panel" style="padding:15px; background:rgba(0,0,0,0.3);">
+                        <small>طاقة التشتت (Energy)</small><br><b id="eVal">1.02%</b>
+                    </div>
+                    <div class="panel" style="padding:15px; background:rgba(0,0,0,0.3);">
+                        <small>زمن الرحلة (ToF)</small><br><b id="tVal">244 µs</b>
+                    </div>
+                </div>
+            </div>
+
+            <div id="map-page" class="page">
+                <h3>تتبع الموقع الحقيقي - الرياض</h3>
+                <div id="map-container"></div>
+                <p id="map-info" style="font-size:0.8rem; margin-top:10px; color:var(--cyan);">الموقع: طريق الملك فهد، الرياض.</p>
+            </div>
+
+            <div id="safety" class="page">
+                <h3>سجل أحداث الأمان</h3>
+                <div id="safetyLogs" style="flex:1; overflow-y:auto; background:rgba(0,0,0,0.3); border-radius:15px; padding:10px; font-family:monospace;">
+                    <div>> نظام CRASHLESS في وضع الاستعداد...</div>
+                </div>
+            </div>
+
+            <div id="settings" class="page">
+                <h3>الإعدادات</h3>
+                <div style="padding:20px;">
+                    <p>ضبط حساسية الحساسات (40 kHz Threshold)</p>
+                    <input type="range" style="width:100%; accent-color:var(--cyan);">
+                    <p>تنبيهات البلوتوث 5.2 <input type="checkbox" checked></p>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="speed-val" id="speedNum">120</div>
+            <div style="text-align:center; color:var(--cyan); letter-spacing:5px;">KM/HOUR</div>
+
+            <div id="safetyTag" style="margin-top:25px; padding:15px; border-radius:15px; background:rgba(0,255,136,0.1); border:1px solid var(--green); text-align:center;">
+                <b id="safetyText">حالة القيادة: آمنة مستقرة ✅</b>
+            </div>
+
+            <canvas id="liveChart" height="130" style="margin-top:20px;"></canvas>
+
+            <button class="btn-emergency" onclick="startRiyadhSimulation()">تفعيل محاكاة الطوارئ (الرياض)</button>
+        </section>
+    </div>
+
+    <script>
+        // --- تهيئة خريطة الرياض ---
+        let map = L.map('map-container').setView([24.7136, 46.6753], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        let marker = L.marker([24.7136, 46.6753]).addTo(map).bindPopup('موقعك الحالي: طريق الملك فهد').openPopup();
+
+        // --- نظام تبديل الصفحات ---
+        function switchPage(pageId, navEl) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('nav i').forEach(i => i.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            navEl.classList.add('active');
+            if(pageId === 'map-page') setTimeout(() => map.invalidateSize(), 200);
+        }
+
+        // --- الرسم البياني ---
+        const ctx = document.getElementById('liveChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: Array.from({length: 20}, (_, i) => i), datasets: [{ data: Array.from({length: 20}, () => 10 + Math.random()*5), borderColor: '#00f2fe', tension: 0.4, pointRadius: 0 }] },
+            options: { plugins: { legend: false }, scales: { x: { display: false }, y: { display: false } } }
+        });
+
+        // --- محاكاة الطوارئ الاحترافية ---
+        let speed = 120;
+        let isSim = false;
+
+        function startRiyadhSimulation() {
+            if(isSim) return;
+            isSim = true;
+
+            // 1. تحديث الحساسات (اليمين) - رصد عيب هيكلي
+            document.getElementById('tire-fr').classList.add('tire-danger');
+            document.getElementById('eVal').innerText = "32% (خطر)";
+            document.getElementById('tVal').innerText = "215 µs (انفصال)";
+            
+            // 2. تحديث الأمان والسرعة
+            document.getElementById('safetyTag').style.borderColor = "var(--red)";
+            document.getElementById('safetyTag').style.background = "rgba(255,0,85,0.1)";
+            document.getElementById('safetyText').innerText = "🚨 بروتوكول SAFE-STOP: حظر المكابح";
+
+            // 3. التنبيه الصوتي
+            const msg = new SpeechSynthesisUtterance("تحذير خطر. رصد شقوق في الإطار الأمامي بالرياض. تم تفعيل نظام التوقف التلقائي.");
+            msg.lang = 'ar-SA';
+            window.speechSynthesis.speak(msg);
+
+            // 4. المحاكاة (تقليل السرعة تدريجياً)
+            const interval = setInterval(() => {
+                if(speed > 0) {
+                    speed -= 4;
+                    document.getElementById('speedNum').innerText = Math.max(0, speed);
+                    chart.data.datasets[0].data = chart.data.datasets[0].data.map(() => Math.random() * 40);
+                    chart.update();
+                } else {
+                    clearInterval(interval);
+                    isSim = false;
+                }
+            }, 400);
+        }
+    </script>
+</body>
+</html>
